@@ -68,6 +68,33 @@ final class AudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     private var lastSystemRMS: Float = 0
     private var lastMicRMS: Float = 0
 
+    // MARK: Живучесть источников
+    // Сменились наушники — источник звука может молча перестать отдавать буферы,
+    // а таймер при этом идёт дальше. Сторож раз в секунду проверяет, что звук
+    // приходит, и пересоздаёт замолчавший источник; смена устройства по умолчанию
+    // пересоздаёт его сразу. Таймлайн не рвётся: дыру writer заполнит тишиной.
+
+    private var recordsSystemAudio = false
+    private var recordsMicrophone = false
+    private var deviceMonitor: AudioDeviceMonitor?
+    private var watchdog: Timer?
+    private var pendingSystemRestart: DispatchWorkItem?
+    private var pendingMicRestart: DispatchWorkItem?
+    private var lastSystemRestart: TimeInterval = 0
+    private var lastMicRestart: TimeInterval = 0
+    // Время (systemUptime) последнего буфера системного звука и последнего
+    // НЕнулевого буфера микрофона. Пишутся на sampleQueue.
+    private var lastSystemBufferAt: TimeInterval = 0
+    private var lastMicSoundAt: TimeInterval = 0
+
+    /// Системный звук без буферов дольше этого — источник умер.
+    private let systemStallTimeout: TimeInterval = 3
+    /// Живой микрофон не отдаёт ровные нули (там всегда есть шум) — значит,
+    /// поток с него оборвался. Перезапускаем не чаще раза в 10 с, на случай
+    /// если громкость входа и правда выкручена в ноль.
+    private let micStallTimeout: TimeInterval = 3
+    private let micRestartInterval: TimeInterval = 10
+
     // MARK: Старт
 
     func start() async throws {
@@ -174,19 +201,18 @@ final class AudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
         // 3. Запускаем источники. Буферы приходят на sampleQueue, как и раньше.
         beginRecordingActivity()
+        let now = ProcessInfo.processInfo.systemUptime
+        sampleQueue.sync {
+            self.lastSystemBufferAt = now
+            self.lastMicSoundAt = now
+        }
+        recordsSystemAudio = wantSystemAudio
+        recordsMicrophone = useMic
         if wantSystemAudio {
-            let tap = SystemAudioTap()
-            try tap.start(queue: sampleQueue) { [weak self] pcm, pts in
-                self?.receive(pcm, at: pts, source: .system)
-            }
-            systemTap = tap
+            try startSystemAudio()
         }
         if useMic {
-            let mic = MicrophoneCapture()
-            try mic.start(queue: sampleQueue) { [weak self] pcm, pts in
-                self?.receive(pcm, at: pts, source: .microphone)
-            }
-            microphone = mic
+            try startMicrophone()
         }
         if let screenStream {
             self.stream = screenStream
@@ -205,6 +231,7 @@ final class AudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
             self.timer = timer
             // Открытое меню переключает run loop в tracking mode.
             RunLoop.main.add(timer, forMode: .common)
+            self.startSourceSupervision()
         }
     }
 
@@ -278,15 +305,152 @@ final class AudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     // MARK: Звук из Core Audio tap и AVAudioEngine (на sampleQueue)
 
     private func receive(_ pcm: AVAudioPCMBuffer, at pts: CMTime, source: RecordingWriter.Source) {
+        switch source {
+        case .system:
+            lastSystemBufferAt = ProcessInfo.processInfo.systemUptime
+        case .microphone:
+            if Self.hasSignal(pcm) { lastMicSoundAt = ProcessInfo.processInfo.systemUptime }
+        }
         let rms = writer?.appendAudio(pcm, at: pts, source: source) ?? 0
         updateLevel(rms: rms, source: source)
     }
 
+    /// Есть ли в буфере хоть один ненулевой сэмпл. Не float — считаем живым.
+    private static func hasSignal(_ pcm: AVAudioPCMBuffer) -> Bool {
+        guard let channels = pcm.floatChannelData else { return true }
+        let n = Int(pcm.frameLength)
+        for c in 0..<Int(pcm.format.channelCount) {
+            let ch = channels[c]
+            for i in 0..<n where ch[i] != 0 { return true }
+        }
+        return false
+    }
+
+    private func startSystemAudio() throws {
+        let tap = SystemAudioTap()
+        try tap.start(queue: sampleQueue) { [weak self] pcm, pts in
+            self?.receive(pcm, at: pts, source: .system)
+        }
+        systemTap = tap
+    }
+
+    private func startMicrophone() throws {
+        let mic = MicrophoneCapture()
+        try mic.start(queue: sampleQueue) { [weak self] pcm, pts in
+            self?.receive(pcm, at: pts, source: .microphone)
+        }
+        mic.onConfigurationChange = { [weak self] in
+            MainActor.assumeIsolated { self?.scheduleRestart(of: .microphone) }
+        }
+        microphone = mic
+    }
+
     private func stopAudioSources() {
+        stopSourceSupervision()
+        recordsSystemAudio = false
+        recordsMicrophone = false
         systemTap?.stop()
         systemTap = nil
         microphone?.stop()
         microphone = nil
+    }
+
+    // MARK: Живучесть источников (главный поток)
+
+    private func startSourceSupervision() {
+        let monitor = AudioDeviceMonitor()
+        monitor.start { [weak self] change in
+            MainActor.assumeIsolated {
+                switch change {
+                case .output: self?.scheduleRestart(of: .system)
+                case .input:  self?.scheduleRestart(of: .microphone)
+                }
+            }
+        }
+        deviceMonitor = monitor
+
+        let watchdog = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkSourcesAlive() }
+        }
+        self.watchdog = watchdog
+        RunLoop.main.add(watchdog, forMode: .common)
+    }
+
+    private func stopSourceSupervision() {
+        deviceMonitor?.stop()
+        deviceMonitor = nil
+        watchdog?.invalidate()
+        watchdog = nil
+        pendingSystemRestart?.cancel()
+        pendingSystemRestart = nil
+        pendingMicRestart?.cancel()
+        pendingMicRestart = nil
+    }
+
+    /// Bluetooth при подключении дёргает устройство по умолчанию несколько раз
+    /// подряд — ждём, пока успокоится, и пересоздаём источник один раз.
+    private func scheduleRestart(of source: RecordingWriter.Source) {
+        let work = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated { self?.restart(source, reason: "сменилось устройство") }
+        }
+        switch source {
+        case .system:
+            guard recordsSystemAudio else { return }
+            pendingSystemRestart?.cancel()
+            pendingSystemRestart = work
+        case .microphone:
+            guard recordsMicrophone else { return }
+            pendingMicRestart?.cancel()
+            pendingMicRestart = work
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    private func checkSourcesAlive() {
+        guard isRecording, !isStopping else { return }
+        let (systemAt, micAt) = sampleQueue.sync { (lastSystemBufferAt, lastMicSoundAt) }
+        let now = ProcessInfo.processInfo.systemUptime
+        if recordsSystemAudio, now - systemAt > systemStallTimeout,
+           now - lastSystemRestart > systemStallTimeout {
+            restart(.system, reason: "нет буферов \(Int(now - systemAt)) с")
+        }
+        if recordsMicrophone, now - micAt > micStallTimeout,
+           now - lastMicRestart > micRestartInterval {
+            restart(.microphone, reason: "тишина/нет буферов \(Int(now - micAt)) с")
+        }
+    }
+
+    /// Пересоздаёт источник с текущим устройством по умолчанию. Не вышло —
+    /// сторож попробует снова, запись не прерывается.
+    private func restart(_ source: RecordingWriter.Source, reason: String) {
+        guard isRecording, !isStopping else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        switch source {
+        case .system:
+            guard recordsSystemAudio else { return }
+            pendingSystemRestart = nil
+            lastSystemRestart = now
+            systemTap?.stop()
+            systemTap = nil
+            do {
+                try startSystemAudio()
+                print("🔁 system audio restarted (\(reason))")
+            } catch {
+                print("⚠️ system audio restart failed (\(reason)): \(error.localizedDescription)")
+            }
+        case .microphone:
+            guard recordsMicrophone else { return }
+            pendingMicRestart = nil
+            lastMicRestart = now
+            microphone?.stop()
+            microphone = nil
+            do {
+                try startMicrophone()
+                print("🔁 microphone restarted (\(reason))")
+            } catch {
+                print("⚠️ microphone restart failed (\(reason)): \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: SCStreamOutput — приём буферов (на sampleQueue)
@@ -425,6 +589,16 @@ final class RecordingWriter {
     private var maxFrame: Int64 = 0         // максимум (start+len) среди принятых
     private let lagFrames: Int64 = 14_400   // ~0.3 с запас перед флашем
 
+    // Куда должен лечь следующий буфер каждого источника, если поток непрерывный.
+    // Метки времени у Bluetooth в режиме звонка «дрожат» на миллисекунды: если
+    // ставить каждый буфер строго по метке, между буферами появляются дырки, а
+    // соседние наслаиваются — получается «электрический» звук. Поэтому кладём
+    // буферы встык и сверяемся с меткой, только если ушли дальше допуска
+    // (перезапуск источника, пропуск, накопившийся дрейф часов).
+    private var nextSystemFrame: Int64?
+    private var nextMicFrame: Int64?
+    private let continuityTolerance: Int64 = 4_800   // 0.1 с
+
     init(outputURL: URL, voiceTrackURL: URL? = nil, video: Bool, videoSize: CGSize, videoBitrate: Int) throws {
         writer = try AVAssetWriter(outputURL: outputURL, fileType: video ? .mov : .m4a)
 
@@ -530,9 +704,17 @@ final class RecordingWriter {
         ensureAnchor(pts)
         guard let anchor else { return 0 }
 
-        let start = Int64(((CMTimeGetSeconds(pts) - CMTimeGetSeconds(anchor)) * 48_000).rounded())
+        var start = Int64(((CMTimeGetSeconds(pts) - CMTimeGetSeconds(anchor)) * 48_000).rounded())
         let n = mono.count
         guard n > 0 else { return 0 }
+        let expected = source == .system ? nextSystemFrame : nextMicFrame
+        if let expected, abs(start - expected) <= continuityTolerance {
+            start = expected
+        }
+        switch source {
+        case .system:     nextSystemFrame = start + Int64(n)
+        case .microphone: nextMicFrame = start + Int64(n)
+        }
 
         // Куда писать в аккумуляторе. Если кусок старше уже флашнутого — отрезаем начало.
         var idx = Int(start - mixBase)

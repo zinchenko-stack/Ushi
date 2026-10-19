@@ -175,6 +175,47 @@ nonisolated final class SystemAudioTap: @unchecked Sendable {
     }
 }
 
+// MARK: - Смена устройств
+
+/// Следит за сменой микрофона / выхода по умолчанию (подключили или сняли
+/// наушники, Zoom переключил AirPods и т.п.). Колбэки — на главном потоке.
+nonisolated final class AudioDeviceMonitor: @unchecked Sendable {
+    enum Change { case input, output }
+
+    private var listeners: [(AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
+
+    func start(_ onChange: @escaping (Change) -> Void) {
+        let selectors: [(AudioObjectPropertySelector, Change)] = [
+            (kAudioHardwarePropertyDefaultInputDevice, .input),
+            (kAudioHardwarePropertyDefaultOutputDevice, .output),
+            (kAudioHardwarePropertyDefaultSystemOutputDevice, .output),
+        ]
+        for (selector, change) in selectors {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            let block: AudioObjectPropertyListenerBlock = { _, _ in onChange(change) }
+            if AudioObjectAddPropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject), &address, .main, block
+            ) == noErr {
+                listeners.append((address, block))
+            }
+        }
+    }
+
+    func stop() {
+        for (address, block) in listeners {
+            var address = address
+            AudioObjectRemovePropertyListenerBlock(
+                AudioObjectID(kAudioObjectSystemObject), &address, .main, block
+            )
+        }
+        listeners = []
+    }
+}
+
 // MARK: - Микрофон
 
 nonisolated final class MicrophoneCapture: @unchecked Sendable {
@@ -185,25 +226,28 @@ nonisolated final class MicrophoneCapture: @unchecked Sendable {
     private var queue: DispatchQueue?
     private var handler: Handler?
 
+    /// Сменили микрофон или подключили наушники — движок остановился.
+    /// Вызывается на главном потоке; владелец пересоздаёт захват целиком
+    /// (перезапуск того же AVAudioEngine после смены Bluetooth-устройства
+    /// часто «тихо» не взлетает — так сегодня пропал голос в созвоне).
+    var onConfigurationChange: (() -> Void)?
+
     /// Запустить захват с микрофона по умолчанию. `handler` вызывается на `queue`.
     func start(queue: DispatchQueue, handler: @escaping Handler) throws {
         self.queue = queue
         self.handler = handler
         try startEngine()
-        // Сменили микрофон или подключили наушники — движок останавливается,
-        // перезапускаем его с новым форматом, запись продолжается.
         configObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            self.engine.inputNode.removeTap(onBus: 0)
-            try? self.startEngine()
+            self?.onConfigurationChange?()
         }
     }
 
     func stop() {
         if let configObserver { NotificationCenter.default.removeObserver(configObserver) }
         configObserver = nil
+        onConfigurationChange = nil
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         handler = nil
