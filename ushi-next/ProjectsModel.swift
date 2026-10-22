@@ -107,7 +107,7 @@ final class ProjectsModel {
     }
 
     /// Создать Проект с явным выбором папки (окно «Новый проект»):
-    /// - `.insideUshi` — папка внутри приложения;
+    /// - `.insideUshi` — новая папка в «Документы → Ushi»;
     /// - `.newFolder(in:)` — новая папка с названием проекта в выбранном месте;
     /// - `.existing` — готовая папка; если название другое, папка переименовывается
     ///   (у проекта в своей папке название и папка всегда совпадают).
@@ -117,7 +117,9 @@ final class ProjectsModel {
         guard !trimmed.isEmpty else { throw ProjectsModelError.emptyName }
         switch location {
         case .insideUshi:
-            return try create(name: trimmed, preset: preset)
+            let parent = AppSettings.projectsParentDirectory()
+            try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+            return try create(name: trimmed, preset: preset, location: .newFolder(in: parent))
         case .newFolder(let parent):
             let folderName = ProjectFolders.folderName(from: trimmed)
             guard !folderName.isEmpty else { throw ProjectsModelError.emptyName }
@@ -231,7 +233,7 @@ enum ProjectsModelError: LocalizedError {
 
 /// Где будет папка нового Проекта (окно «Новый проект»).
 enum NewProjectLocation: Equatable {
-    /// Внутри приложения (Application Support) — managed.
+    /// Новая папка в «Документы → Ushi» (по умолчанию).
     case insideUshi
     /// Новая папка с названием проекта внутри выбранного места.
     case newFolder(in: URL)

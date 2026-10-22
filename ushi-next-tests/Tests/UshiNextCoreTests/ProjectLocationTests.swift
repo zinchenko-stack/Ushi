@@ -25,11 +25,14 @@ final class ProjectLocationTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    func testInsideUshiIsManaged() throws {
+    func testDefaultLocationIsFolderInDocumentsUshi() throws {
         let projects = try makeModel()
         let project = try projects.create(name: "Лекции", preset: .systemAndMic, location: .insideUshi)
-        XCTAssertEqual(project.storage, .managed)
+        let folder = AppSettings.projectsParentDirectory().appendingPathComponent("Лекции")
         XCTAssertEqual(project.name, "Лекции")
+        XCTAssertEqual(try ProjectFolders.rootFolder(for: project).standardizedFileURL, folder.standardizedFileURL)
+        // Записи — прямо в папке проекта, без подпапки recordings.
+        XCTAssertEqual(try ProjectFolders.recordingsDirectory(for: project).standardizedFileURL, folder.standardizedFileURL)
     }
 
     func testNewFolderIsCreatedWithProjectName() throws {

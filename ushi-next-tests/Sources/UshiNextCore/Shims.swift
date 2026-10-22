@@ -14,6 +14,7 @@ enum AppSettings {
     static func orphanRecordingsDirectory() throws -> URL { try recordingsDirectory() }
     static func transcriptsDirectory() throws -> URL { try directory("transcripts") }
     static func voiceTracksDirectory() throws -> URL { try directory("voices") }
+    static func projectsParentDirectory() -> URL { root.appendingPathComponent("UshiProjects") }
     static func projectDirectory(projectId: UUID) throws -> URL { root.appendingPathComponent("Projects/" + projectId.uuidString) }
     static func projectRecordingsDirectory(projectId: UUID) throws -> URL { try directory("Projects/" + projectId.uuidString + "/recordings") }
     static func autoDeleteAudio() -> Bool { false }

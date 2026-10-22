@@ -144,7 +144,7 @@ struct CreateProjectSheet: View {
 
     private var folderTitle: String {
         switch location {
-        case .insideUshi:        return "Новая папка «\(shownFolderName)» в Ushi"
+        case .insideUshi:        return "Новая папка «\(shownFolderName)»"
         case .newFolder:         return "Новая папка «\(shownFolderName)»"
         case .existing(let url): return "Готовая папка «\(url.lastPathComponent)»"
         }
@@ -153,7 +153,7 @@ struct CreateProjectSheet: View {
     private var folderSubtitle: String {
         switch location {
         case .insideUshi:
-            return "Записи хранятся внутри приложения"
+            return "Будет создана в Документы → Ushi"
         case .newFolder(let parent):
             return "Будет создана в \(ProjectFolders.displayPath(parent.path))"
         case .existing(let url):

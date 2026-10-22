@@ -251,6 +251,13 @@ enum AppSettings {
         return dir
     }
 
+    /// `~/Documents/Ushi/` — здесь создаются папки новых Проектов («Альфа», «Дикси»…),
+    /// чтобы записи было видно в Finder, а не прятать их внутри приложения.
+    static func projectsParentDirectory() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Ushi", isDirectory: true)
+    }
+
     /// `~/Library/Application Support/UshiNext/Projects/{id}/` — корень managed-Проекта.
     /// Не создаётся: нужен для «Показать в Finder» и удаления папки вместе с Проектом.
     static func projectDirectory(projectId: UUID) throws -> URL {

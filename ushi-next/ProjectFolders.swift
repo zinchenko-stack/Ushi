@@ -4,7 +4,7 @@
 //
 //  Где физически лежат файлы Проекта (Phase 3, §5 брифа).
 //  managed  → Application Support/UshiNext/Projects/{id}/recordings/
-//  external → {выбранная папка}/recordings/, папку находим по bookmark —
+//  external → прямо в выбранной папке, папку находим по bookmark —
 //             он переживает переименование и перенос папки в Finder.
 //  Приложение не sandboxed, поэтому bookmark обычный (не security-scoped).
 //
@@ -61,7 +61,8 @@ enum ProjectFolders {
         }
     }
 
-    /// Куда пишутся записи Проекта. Создаёт `recordings/`, если её нет.
+    /// Куда пишутся записи Проекта. У external — прямо в папку Проекта,
+    /// без подпапки: в Finder «Ushi → Дикси → файлы».
     /// `project == nil` — orphan-«Записи».
     static func recordingsDirectory(for project: Project?) throws -> URL {
         guard let project else { return try AppSettings.recordingsDirectory() }
@@ -69,9 +70,7 @@ enum ProjectFolders {
         case .managed:
             return try AppSettings.projectRecordingsDirectory(projectId: project.id)
         case .external:
-            let dir = try rootFolder(for: project).appendingPathComponent("recordings", isDirectory: true)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            return dir
+            return try rootFolder(for: project)
         }
     }
 
