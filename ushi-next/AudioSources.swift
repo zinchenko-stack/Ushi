@@ -47,6 +47,11 @@ nonisolated final class SystemAudioTap: @unchecked Sendable {
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var ioProcID: AudioDeviceIOProcID?
+    private var tapList: UnsafeMutableAudioBufferListPointer?
+    private var rateListener: AudioObjectPropertyListenerBlock?
+
+    /// Частота устройства сменилась — захват надо пересоздать. Главный поток.
+    var onFormatChange: (() -> Void)?
 
     /// Запустить захват. `handler` вызывается на `queue` для каждого буфера.
     func start(queue: DispatchQueue, handler: @escaping Handler) throws {
@@ -78,15 +83,31 @@ nonisolated final class SystemAudioTap: @unchecked Sendable {
             status = AudioHardwareCreateAggregateDevice(aggregate as CFDictionary, &aggregateID)
             guard status == noErr else { throw AudioSourceError.systemAudio("aggregate", status) }
 
-            // 3. Формат tap-а и колбэк с буферами.
+            // 3. Формат буферов и колбэк.
+            // Каналы — как у tap-а, но ЧАСТОТА — агрегатного устройства: tap
+            // пересэмплируется под него. AirPods в режиме звонка работают на
+            // 24 кГц, а tap сообщает свои 48 кГц — если верить tap-у, голос
+            // собеседника выходит ускоренным вдвое и с дырками («инопланетный»).
             var asbd = try Self.tapFormat(tapID)
+            asbd.mSampleRate = try Self.nominalSampleRate(aggregateID)
             guard let format = AVAudioFormat(streamDescription: &asbd) else {
                 throw AudioSourceError.systemAudio("format", -1)
             }
+            // У агрегата бывают и чужие входы: в режиме звонка у AirPods есть
+            // микрофон, его поток идёт в списке раньше tap-а. Берём последние
+            // буферы — это всегда tap.
+            let tapBuffers = format.isInterleaved ? 1 : Int(format.channelCount)
+            let tapList = AudioBufferList.allocate(maximumBuffers: tapBuffers)
+            self.tapList = tapList
             status = AudioDeviceCreateIOProcIDWithBlock(&ioProcID, aggregateID, queue) { _, inInputData, inInputTime, _, _ in
+                let all = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inInputData))
+                guard all.count >= tapBuffers else { return }
+                for i in 0..<tapBuffers {
+                    tapList[i] = all[all.count - tapBuffers + i]
+                }
                 guard let pcm = AVAudioPCMBuffer(
                     pcmFormat: format,
-                    bufferListNoCopy: UnsafeMutablePointer(mutating: inInputData),
+                    bufferListNoCopy: tapList.unsafePointer,
                     deallocator: nil
                 ) else { return }
                 let time = inInputTime.pointee
@@ -99,6 +120,20 @@ nonisolated final class SystemAudioTap: @unchecked Sendable {
 
             status = AudioDeviceStart(aggregateID, ioProcID)
             guard status == noErr else { throw AudioSourceError.systemAudio("start", status) }
+
+            // Частота устройства сменилась на ходу (наушники ушли в режим
+            // звонка или вернулись) — формат выше устарел, источник надо пересоздать.
+            var rateAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyNominalSampleRate,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+                self?.onFormatChange?()
+            }
+            if AudioObjectAddPropertyListenerBlock(aggregateID, &rateAddress, .main, listener) == noErr {
+                rateListener = listener
+            }
         } catch {
             stop()
             throw error
@@ -106,6 +141,16 @@ nonisolated final class SystemAudioTap: @unchecked Sendable {
     }
 
     func stop() {
+        onFormatChange = nil
+        if let rateListener, aggregateID != kAudioObjectUnknown {
+            var rateAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyNominalSampleRate,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectRemovePropertyListenerBlock(aggregateID, &rateAddress, .main, rateListener)
+        }
+        rateListener = nil
         if aggregateID != kAudioObjectUnknown {
             if let ioProcID {
                 AudioDeviceStop(aggregateID, ioProcID)
@@ -119,6 +164,8 @@ nonisolated final class SystemAudioTap: @unchecked Sendable {
         ioProcID = nil
         aggregateID = AudioObjectID(kAudioObjectUnknown)
         tapID = AudioObjectID(kAudioObjectUnknown)
+        tapList?.unsafeMutablePointer.deallocate()
+        tapList = nil
     }
 
     // MARK: Core Audio хелперы
@@ -159,6 +206,19 @@ nonisolated final class SystemAudioTap: @unchecked Sendable {
         status = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &uid)
         guard status == noErr, let uid else { throw AudioSourceError.systemAudio("output uid", status) }
         return uid.takeRetainedValue() as String
+    }
+
+    private static func nominalSampleRate(_ device: AudioObjectID) throws -> Float64 {
+        var rate = Float64(0)
+        var size = UInt32(MemoryLayout<Float64>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyNominalSampleRate,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(device, &address, 0, nil, &size, &rate)
+        guard status == noErr, rate > 0 else { throw AudioSourceError.systemAudio("sample rate", status) }
+        return rate
     }
 
     private static func tapFormat(_ tap: AudioObjectID) throws -> AudioStreamBasicDescription {

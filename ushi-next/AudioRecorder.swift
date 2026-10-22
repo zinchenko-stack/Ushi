@@ -331,6 +331,9 @@ final class AudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         try tap.start(queue: sampleQueue) { [weak self] pcm, pts in
             self?.receive(pcm, at: pts, source: .system)
         }
+        tap.onFormatChange = { [weak self] in
+            MainActor.assumeIsolated { self?.scheduleRestart(of: .system) }
+        }
         systemTap = tap
     }
 
