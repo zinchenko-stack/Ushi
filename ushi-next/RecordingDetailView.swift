@@ -260,24 +260,10 @@ struct RecordingDetailView: View {
         }
     }
 
-    /// Пустая расшифровка: в записи не нашлось речи. Подсказываем вероятную причину
-    /// по тому, какие источники были включены.
+    /// Пустая расшифровка: в записи не нашлось речи.
     private func noSpeechBlock(for rec: Recording) -> some View {
-        let reason: String
-        if !rec.hasMicrophone && rec.hasSystemAudio {
-            reason = "Микрофон был выключен, поэтому ваш голос не записывался. Звука компьютера — голоса собеседника — за это время не было."
-        } else if rec.hasMicrophone && !rec.hasSystemAudio {
-            reason = "Звук компьютера был выключен, поэтому голос собеседника не записывался. В микрофон за это время никто не говорил."
-        } else {
-            reason = "Похоже, за это время никто не говорил: ни в микрофон, ни в созвоне. Можно прослушать запись выше, чтобы проверить."
-        }
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("В записи не нашлось речи")
-                .font(.headline)
-            Text(reason)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        Text("В записи не найдена речь")
+            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder
