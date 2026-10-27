@@ -577,7 +577,8 @@ private struct SourceToggleButton: View {
                     }
                 Text(source.shortTitle)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    // Включённый источник — подпись того же тёмно-синего, что и значок.
+                    .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
                     .lineLimit(1)
                     .fixedSize()
             }
