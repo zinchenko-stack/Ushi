@@ -168,44 +168,56 @@ struct HeroStartView: View {
 
     private func recordingLayout(_ live: LiveTranscript) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                Button(action: handleTap) {
-                    ZStack {
-                        Circle().fill(AppColors.red).frame(width: 36, height: 36)
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.white)
+            HStack(alignment: .center, spacing: 20) {
+                // Слева: стоп и время, под ними — куда идёт запись.
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 14) {
+                        Button(action: handleTap) {
+                            ZStack {
+                                Circle().fill(AppColors.red).frame(width: 36, height: 36)
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.white)
+                            }
+                            .opacity(controller.isBusy ? 0.5 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(controller.isBusy)
+                        .help("Остановить запись")
+                        .accessibilityLabel("Остановить запись")
+
+                        Text(formatTime(recorder.elapsed))
+                            .font(.system(size: 22, weight: .medium, design: .rounded).monospacedDigit())
+                            .contentTransition(.numericText())
                     }
-                    .opacity(controller.isBusy ? 0.5 : 1)
+                    projectChip
                 }
-                .buttonStyle(.plain)
-                .disabled(controller.isBusy)
-                .help("Остановить запись")
-                .accessibilityLabel("Остановить запись")
-
-                Text(formatTime(recorder.elapsed))
-                    .font(.system(size: 22, weight: .medium, design: .rounded).monospacedDigit())
-                    .contentTransition(.numericText())
-
-                projectChip
 
                 Spacer(minLength: 12)
 
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(.quaternary)
-                    .frame(width: 120, height: 6)
-                    .overlay(alignment: .leading) {
-                        GeometryReader { geo in
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(levelColor)
-                                .frame(width: geo.size.width * CGFloat(recorder.level))
-                                .animation(.easeOut(duration: 0.1), value: recorder.level)
+                // Справа: что пишется — чтобы сразу заметить, если что-то забыли включить.
+                VStack(alignment: .trailing, spacing: 10) {
+                    HStack(spacing: 8) {
+                        ForEach(RecordingPreset.Source.available, id: \.self) { source in
+                            ActiveSourceBadge(source: source, isOn: presetBinding.wrappedValue.contains(source))
                         }
                     }
-                    .accessibilityHidden(true)
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(.quaternary)
+                        .frame(width: 160, height: 6)
+                        .overlay(alignment: .leading) {
+                            GeometryReader { geo in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(levelColor)
+                                    .frame(width: geo.size.width * CGFloat(recorder.level))
+                                    .animation(.easeOut(duration: 0.1), value: recorder.level)
+                            }
+                        }
+                        .accessibilityHidden(true)
+                }
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
 
             if let errorMessage = controller.errorMessage {
                 Text(errorMessage)
@@ -458,6 +470,32 @@ struct HeroStartView: View {
 
 /// Круглая кнопка-переключатель источника с подписью снизу, как в Telegram:
 /// включена — залита акцентом, выключена — серая.
+/// Источник на полосе записи: включён — подсвечен, выключен — приглушён и
+/// подписан «выкл.», чтобы это было видно с первого взгляда.
+private struct ActiveSourceBadge: View {
+    let source: RecordingPreset.Source
+    let isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isOn ? source.systemImage : source.systemImage.replacingOccurrences(of: ".fill", with: ""))
+                .font(.system(size: 12, weight: .medium))
+            Text(isOn ? source.shortTitle : "\(source.shortTitle): выкл.")
+                .font(.system(size: 12, weight: isOn ? .medium : .regular))
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(isOn ? AppColors.accentFill : Color.clear))
+        .overlay(Capsule().strokeBorder(isOn ? Color.clear : Color.secondary.opacity(0.35)))
+        .opacity(isOn ? 1 : 0.8)
+        .accessibilityLabel(source.title)
+        .accessibilityValue(isOn ? "пишется" : "не пишется")
+    }
+}
+
 private struct SourceToggleButton: View {
     let source: RecordingPreset.Source
     let isOn: Bool
