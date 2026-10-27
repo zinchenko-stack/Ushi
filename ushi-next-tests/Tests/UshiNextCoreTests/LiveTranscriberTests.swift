@@ -47,10 +47,27 @@ final class LiveTranscriberTests: XCTestCase {
             position += chunk.left.count
         }
         XCTAssertEqual(chunks.flatMap(\.left), audio)
-        // Режем в тишине и не короче 15 с (кроме последнего).
+        // Режем в тишине и не короче, чем положено в этом месте записи (кроме последнего).
         for chunk in chunks.dropLast() {
-            XCTAssertGreaterThanOrEqual(chunk.left.count, 15 * rate)
+            XCTAssertGreaterThanOrEqual(chunk.left.count, LiveChunker.limits(forPosition: chunk.start).min)
             XCTAssertEqual(audio[chunk.start + chunk.left.count - 1], 0, "кусок обрезан не в паузе")
+        }
+    }
+
+    /// В начале куски короткие, чтобы текст появился сразу: ~5 с, потом ~15 с, после минуты ~30 с.
+    func testChunksAreShortAtStartAndLongerLater() {
+        let audio = speechWithPauses(total: 150, speech: 2.5, pause: 0.5)
+        var chunker = LiveChunker(stereo: false)
+        let chunks = feed(audio, into: &chunker).dropLast()
+        let seconds = chunks.map { Double($0.left.count) / Double(rate) }
+        XCTAssertLessThanOrEqual(seconds[0], 8)
+        for (chunk, length) in zip(chunks, seconds) {
+            let at = Double(chunk.start) / Double(rate)
+            switch at {
+            case 5..<60: XCTAssert((12...20).contains(length), "в \(at) с кусок \(length) с")
+            case 60...:  XCTAssert((25...40).contains(length), "в \(at) с кусок \(length) с")
+            default: break
+            }
         }
     }
 

@@ -474,7 +474,7 @@ struct HeroStartView: View {
 /// Круглая кнопка-переключатель источника с подписью снизу, как в Telegram:
 /// включена — залита акцентом, выключена — серая.
 /// Источник на полосе записи — кружок со значком, не кнопка. Включён —
-/// приглушённый голубой, выключен — серый в рамке.
+/// приглушённый голубой, выключен — серый.
 private struct ActiveSourceBadge: View {
     let source: RecordingPreset.Source
     let isOn: Bool
@@ -485,7 +485,6 @@ private struct ActiveSourceBadge: View {
             .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
             .frame(width: 32, height: 32)
             .background(Circle().fill(isOn ? AppColors.accentFill.opacity(0.7) : Color.secondary.opacity(0.15)))
-            .overlay(Circle().strokeBorder(isOn ? Color.clear : Color.secondary.opacity(0.35)))
             .opacity(isOn ? 1 : 0.8)
             .help(isOn ? "\(source.title): пишется" : "\(source.title): не пишется")
             .accessibilityLabel(source.title)
@@ -512,7 +511,6 @@ private struct RecordingProjectBadge: View {
         .padding(.horizontal, 8)
         .frame(height: 32)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.secondary.opacity(0.15)))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.secondary.opacity(0.35)))
         .opacity(0.45)
         .fixedSize()
         .accessibilityLabel("Проект: \(name)")

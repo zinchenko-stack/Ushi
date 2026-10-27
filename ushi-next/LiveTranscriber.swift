@@ -2,10 +2,10 @@
 //  LiveTranscriber.swift
 //  UshiNext
 //
-//  Живая расшифровка во время созвона: звук нарезается на куски по паузам
-//  (15–40 с), каждый кусок распознаётся whisper тем же способом, что и запись
-//  целиком, реплики склеиваются. Текст отстаёт от разговора примерно на
-//  полминуты. После остановки эти же куски и есть итоговая расшифровка —
+//  Живая расшифровка во время созвона: звук нарезается на куски по паузам,
+//  каждый кусок распознаётся whisper тем же способом, что и запись целиком,
+//  реплики склеиваются. Чтобы текст появился сразу, в начале куски короткие:
+//  первый ~5 с, до минуты ~15 с, дальше ~30 с (длинные точнее распознаются). После остановки эти же куски и есть итоговая расшифровка —
 //  второй раз запись не распознаётся.
 //
 //  Куски идут встык, без нахлёста: каждый сэмпл попадает ровно в один кусок,
@@ -39,8 +39,15 @@ nonisolated struct LiveChunker {
         let right: [Float]?
     }
 
-    let minSamples = 15 * LiveChunker.rate
-    let maxSamples = 40 * LiveChunker.rate
+    /// Границы длины куска в зависимости от того, где он начинается
+    /// (в сэмплах от начала записи): первый ~5 с, до минуты ~15 с, дальше ~30 с.
+    static func limits(forPosition position: Int) -> (min: Int, max: Int) {
+        switch position {
+        case ..<(5 * rate):  return (3 * rate, 8 * rate)
+        case ..<(60 * rate): return (12 * rate, 20 * rate)
+        default:             return (25 * rate, 40 * rate)
+        }
+    }
     /// Тишина: окно 0.3 с с громкостью ниже порога (≈ −44 дБ).
     private let frame = 800                    // 50 мс
     private let windowFrames = 6               // 0.3 с
@@ -87,6 +94,7 @@ nonisolated struct LiveChunker {
     /// Где резать: первая тишина после минимальной длины; нет тишины до
     /// максимума — самое тихое место. nil — ещё рано.
     private func cutPoint() -> Int? {
+        let (minSamples, maxSamples) = Self.limits(forPosition: consumed)
         let minFrame = minSamples / frame
         guard frameEnergy.count >= minFrame + windowFrames else { return nil }
         let threshold = silenceRMS * silenceRMS
@@ -349,7 +357,7 @@ final class LiveTranscript {
         var lines = [isFinished
             ? "# Ushi: запись закончена в \(clock.string(from: Date()))\(project), начало \(clock.string(from: startDate))"
             : "# Ushi: идёт запись\(project), начало \(clock.string(from: startDate))",
-            "# Текст отстаёт от разговора примерно на полминуты. Время — начало куска, в котором прозвучала реплика.",
+            "# Текст отстаёт от разговора на 10–40 секунд. Время — начало куска, в котором прозвучала реплика.",
             ""]
         for turn in turns {
             let at = clock.string(from: startDate.addingTimeInterval(turn.start))
