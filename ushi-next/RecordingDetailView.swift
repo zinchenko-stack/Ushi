@@ -442,11 +442,13 @@ private struct TranscriptDialogView: View {
                 ForEach(blocks) { block in
                     VStack(alignment: .leading, spacing: 4) {
                         if let speaker = block.speaker {
+                            // Как в живой расшифровке: подпись 13, текст 14/20.
                             Text(speaker)
-                                .font(.subheadline)
+                                .font(.system(size: 13))
                                 .foregroundStyle(.secondary)
                         }
                         Text(block.body)
+                            .font(.system(size: 14))
                             .textSelection(.enabled)
                             .lineSpacing(3)
                     }
