@@ -479,8 +479,7 @@ private struct ActiveSourceBadge: View {
 
     var body: some View {
         // Контурные значки потолще: тонкие терялись, залитые — слишком тяжёлые.
-        Image(systemName: source.systemImage.replacingOccurrences(of: ".fill", with: ""))
-            .font(.system(size: 14, weight: .medium))
+        SourceGlyph(source: source, filled: false, size: 14)
             .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
             .opacity(isOn ? 1 : 0.6)
             .frame(width: 32, height: 32)
@@ -516,6 +515,46 @@ private struct RecordingProjectBadge: View {
     }
 }
 
+/// Значок источника. Монитор рисуем сами: у системного экран внутри залит
+/// серым, а нужен пустой — как у остальных значков.
+private struct SourceGlyph: View {
+    let source: RecordingPreset.Source
+    /// Залитые варианты динамика и микрофона (стартовый экран) или контурные.
+    let filled: Bool
+    let size: CGFloat
+
+    var body: some View {
+        if source == .screen {
+            MonitorGlyph(size: size)
+        } else {
+            let name = filled ? source.systemImage : source.systemImage.replacingOccurrences(of: ".fill", with: "")
+            Image(systemName: name)
+                .font(.system(size: size, weight: .medium))
+        }
+    }
+}
+
+/// Контур монитора с ножкой, экран пустой. Пропорции и толщина — как у SF Symbols того же размера.
+private struct MonitorGlyph: View {
+    let size: CGFloat
+
+    var body: some View {
+        let line = max(1.5, size * 0.11)
+        let width = size * 1.2
+        let screen = size * 0.8
+        VStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: size * 0.16, style: .continuous)
+                .strokeBorder(lineWidth: line)
+                .frame(width: width, height: screen)
+            Rectangle()
+                .frame(width: line * 1.2, height: size * 0.14)
+            RoundedRectangle(cornerRadius: line / 2)
+                .frame(width: width * 0.42, height: line)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 private struct SourceToggleButton: View {
     let source: RecordingPreset.Source
     let isOn: Bool
@@ -525,8 +564,7 @@ private struct SourceToggleButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 8) {
-                Image(systemName: source.systemImage)
-                    .font(.system(size: 17, weight: .medium))
+                SourceGlyph(source: source, filled: true, size: 17)
                     .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
                     .frame(width: 44, height: 44)
                     // Выключенный источник — белая карточка с тенью: видно, что его можно включить.
