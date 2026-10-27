@@ -480,13 +480,13 @@ private struct ActiveSourceBadge: View {
     let isOn: Bool
 
     var body: some View {
-        // Залитые значки, как у кнопок источников на стартовом экране.
-        Image(systemName: source.systemImage)
+        // Контурные значки потолще: тонкие терялись, залитые — слишком тяжёлые.
+        Image(systemName: source.systemImage.replacingOccurrences(of: ".fill", with: ""))
             .font(.system(size: 14, weight: .medium))
             .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
+            .opacity(isOn ? 1 : 0.6)
             .frame(width: 32, height: 32)
             .background(Circle().fill(isOn ? AppColors.accentFill.opacity(0.7) : Color.secondary.opacity(0.15)))
-            .opacity(isOn ? 1 : 0.8)
             .help(isOn ? "\(source.title): пишется" : "\(source.title): не пишется")
             .accessibilityLabel(source.title)
             .accessibilityValue(isOn ? "пишется" : "не пишется")
