@@ -25,7 +25,7 @@ struct LiveTranscriptPanel: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     if live.turns.isEmpty {
-                        Text("Здесь будет расшифровка записи.")
+                        Text("Скоро здесь появится расшифровка записи")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(Array(live.turns.enumerated()), id: \.offset) { index, turn in
