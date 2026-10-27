@@ -59,6 +59,11 @@ struct TranscriptionService {
         "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin")!
 
     private static func resolveBinary() -> String? {
+        // Для проверок вне приложения (тесты): явный путь к whisper-cli.
+        if let path = ProcessInfo.processInfo.environment["USHI_WHISPER_CLI"],
+           FileManager.default.fileExists(atPath: path) {
+            return path
+        }
         if let bundled = Bundle.main.url(forResource: "whisper-cli", withExtension: nil),
            FileManager.default.fileExists(atPath: bundled.path) {
             return bundled.path
@@ -192,7 +197,7 @@ struct TranscriptionService {
         }
         let outputPrefix = outputDir.appendingPathComponent(baseName).path
 
-        try await runWhisper(
+        _ = try await runWhisper(
             binary: binary,
             model: model.path,
             wavPath: wavURL.path,
@@ -220,6 +225,48 @@ struct TranscriptionService {
         return txtURL
     }
 
+    // MARK: - Кусок живой расшифровки
+
+    /// Распознаёт готовый WAV 16 кГц (кусок записи во время созвона) теми же
+    /// настройками, что и запись целиком. Возвращает сырой вывод whisper и язык,
+    /// если он определялся автоматически (`language == "auto"`).
+    static func transcribeChunk(
+        wavURL: URL, diarize: Bool, language: String
+    ) async throws -> (raw: String, detectedLanguage: String?, probability: Double?) {
+        guard let binary = resolveBinary() else {
+            throw TranscriptionError.binaryNotFound(binaryCandidates.joined(separator: ", "))
+        }
+        let model = modelURL()
+        guard FileManager.default.fileExists(atPath: model.path) else {
+            throw TranscriptionError.modelNotFound(model.path)
+        }
+        let vadModel = await ensureVADModel()
+        let prefix = wavURL.deletingPathExtension().path
+        let stderr = try await runWhisper(
+            binary: binary, model: model.path, wavPath: wavURL.path,
+            language: language, outputPrefix: prefix, vadModel: vadModel, diarize: diarize
+        )
+        let txtURL = URL(fileURLWithPath: prefix + ".txt")
+        defer { try? FileManager.default.removeItem(at: txtURL) }
+        // Нет речи — whisper может не создать файл: это пустой кусок, не ошибка.
+        let raw = (try? String(contentsOf: txtURL, encoding: .utf8)) ?? ""
+        let detected = detectedLanguage(in: String(decoding: stderr, as: UTF8.self))
+        return (raw, detected?.code, detected?.probability)
+    }
+
+    /// «auto-detected language: ru (p = 0.998040)» из stderr whisper-cli.
+    static func detectedLanguage(in log: String) -> (code: String, probability: Double)? {
+        guard let range = log.range(of: "auto-detected language: ") else { return nil }
+        let rest = log[range.upperBound...]
+        let code = rest.prefix { $0.isLetter }
+        guard !code.isEmpty else { return nil }
+        var probability = 0.0
+        if let p = rest.range(of: "p = ") {
+            probability = Double(rest[p.upperBound...].prefix { $0.isNumber || $0 == "." }) ?? 0
+        }
+        return (String(code), probability)
+    }
+
     // MARK: - Говорящие
 
     nonisolated static let selfLabel = "Я"
@@ -231,6 +278,12 @@ struct TranscriptionService {
     /// Выход: подряд идущие сегменты одного говорящего склеены в одну реплику,
     /// реплики разделены пустой строкой: «Я: …», «Собеседник: …».
     static func labelSpeakers(_ raw: String) -> String {
+        speakerTurns(raw).map { "\($0.speaker): \($0.text)" }.joined(separator: "\n\n")
+    }
+
+    /// То же, что `labelSpeakers`, но репликами — для живой расшифровки, где
+    /// куски склеиваются между собой.
+    static func speakerTurns(_ raw: String) -> [(speaker: String, text: String)] {
         var turns: [(speaker: String, text: String)] = []
         var lastNorm: String?
 
@@ -263,7 +316,7 @@ struct TranscriptionService {
             }
         }
 
-        return turns.map { "\($0.speaker): \($0.text)" }.joined(separator: "\n\n")
+        return turns
     }
 
     /// Текст без меток говорящих — для авто-названия и поиска по смыслу.
@@ -306,7 +359,7 @@ struct TranscriptionService {
     private static func runWhisper(
         binary: String, model: String, wavPath: String,
         language: String, outputPrefix: String, vadModel: URL?, diarize: Bool
-    ) async throws {
+    ) async throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         var args = [
@@ -331,12 +384,15 @@ struct TranscriptionService {
         process.standardError = Pipe()
         process.standardOutput = Pipe()
 
+        var log = Data()
         try await runProcess(process) { code, errData in
             if code != 0 {
                 let msg = String(data: errData, encoding: .utf8) ?? "code \(code)"
                 throw TranscriptionError.whisperFailed(msg)
             }
+            log = errData
         }
+        return log
     }
 
     // MARK: - Process helper

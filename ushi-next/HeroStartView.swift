@@ -116,6 +116,12 @@ struct HeroStartView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 }
+
+                // Живая расшифровка — занимает всё оставшееся место внизу.
+                if controller.isRecording, let live = controller.liveTranscript {
+                    LiveTranscriptPanel(live: live)
+                        .frame(maxWidth: 720, maxHeight: .infinity)
+                }
             }
             .padding(.top, 64)
             .frame(maxHeight: .infinity, alignment: .top)

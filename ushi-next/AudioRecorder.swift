@@ -38,6 +38,10 @@ final class AudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
     /// false + micEnabled = пресет «Только микрофон».
     var systemAudioEnabled = true
 
+    /// Получатель звука для живой расшифровки (см. `RecordingWriter.LiveSink`).
+    /// Ставится перед start(); вызывается на очереди сэмплов.
+    @ObservationIgnored var liveSink: RecordingWriter.LiveSink?
+
     /// Куда класть следующий файл. nil = общая папка записей (orphan).
     /// Ставится перед start() — например, в папку Проекта.
     var outputDirectory: URL?
@@ -192,6 +196,7 @@ final class AudioRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
         let writer = try RecordingWriter(outputURL: fileURL, voiceTrackURL: voiceURL,
                                          video: wantVideo,
                                          videoSize: videoSize, videoBitrate: videoBitrate)
+        writer.liveSink = liveSink
 
         sampleQueue.sync {
             self.currentFileURL = fileURL
@@ -565,6 +570,12 @@ final class RecordingWriter {
 
     enum Source { case system, microphone }
 
+    /// Готовый (сведённый) звук для живой расшифровки, 48 кГц моно, по порядку
+    /// и без пропусков: микрофон и система раздельно (nil, если пишется один
+    /// источник или голосовая дорожка отвалилась) и общий микс.
+    typealias LiveSink = (_ microphone: [Float]?, _ system: [Float]?, _ mix: [Float]) -> Void
+    var liveSink: LiveSink?
+
     private let writer: AVAssetWriter
     private let audioInput: AVAssetWriterInput
     private let videoInput: AVAssetWriterInput?
@@ -815,6 +826,12 @@ final class RecordingWriter {
         let pts = CMTimeAdd(anchor, CMTime(value: mixBase, timescale: 48_000))
         guard let sb = makeAudioSampleBuffer(from: pcm, pts: pts) else { return }
         audioInput.append(sb)
+        if let liveSink {
+            let hasParts = voiceFile != nil && micPart.count >= count && systemPart.count >= count
+            liveSink(hasParts ? Array(micPart[..<count]) : nil,
+                     hasParts ? Array(systemPart[..<count]) : nil,
+                     Array(mix[..<count]))
+        }
         writeVoiceTrack(count: count)
 
         mix.removeFirst(count)

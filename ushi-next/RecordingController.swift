@@ -28,6 +28,8 @@ final class RecordingController {
     /// свой запрос). UI рисует её спокойно, без красного.
     private(set) var errorIsPermissionHint = false
     private(set) var lastSavedRecording: Recording?
+    /// Живая расшифровка текущей (или только что законченной) записи.
+    private(set) var liveTranscript: LiveTranscript?
 
     /// Идёт обратный отсчёт перед стартом (3…2…1). nil — отсчёта нет.
     private(set) var countdown: Int?
@@ -133,9 +135,19 @@ final class RecordingController {
         do {
             try configureRecorder(for: preset, project: project)
             try await ensurePermissionsForCurrentConfiguration()
+            // Живая расшифровка — только если модель распознавания уже скачана.
+            if ModelManager.shared.isReady {
+                let live = LiveTranscript(projectName: project?.name)
+                recorder.liveSink = { [engine = live.engine!] mic, system, mix in
+                    engine.append(microphone: mic, system: system, mix: mix)
+                }
+                liveTranscript = live
+            }
             try await recorder.start()
             errorMessage = nil
         } catch {
+            recorder.liveSink = nil
+            liveTranscript = nil
             activePreset = nil
             activeProjectID = nil
             handle(error, alertOnFailure: alertOnFailure)
@@ -171,6 +183,8 @@ final class RecordingController {
 
         do {
             let result = try await recorder.stop()
+            recorder.liveSink = nil
+            let live = liveTranscript
             let project = activeProject
             let preset = activePreset ?? project?.lastUsedPreset ?? globalPreset
             // addRecording сам обновляет sticky-пресет контекста (§7.2).
@@ -179,7 +193,8 @@ final class RecordingController {
                 duration: result.duration,
                 project: project,
                 preset: preset,
-                voiceTrackURL: result.voiceTrackURL
+                voiceTrackURL: result.voiceTrackURL,
+                liveTranscript: live.map { live in { await live.finish() } }
             )
             if project == nil {
                 globalPreset = preset

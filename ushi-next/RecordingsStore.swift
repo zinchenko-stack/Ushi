@@ -321,7 +321,8 @@ final class RecordingsStore {
         duration: TimeInterval,
         project: Project? = nil,
         preset: RecordingPreset? = nil,
-        voiceTrackURL: URL? = nil
+        voiceTrackURL: URL? = nil,
+        liveTranscript: (() async -> String?)? = nil
     ) -> Recording {
         let canTranscribe = ModelManager.shared.isReady
         let resolvedPreset = preset
@@ -365,10 +366,37 @@ final class RecordingsStore {
         if canTranscribe {
             let recordingID = rec.id
             Task.detached(priority: .userInitiated) { [weak self] in
+                // Живая расшифровка уже распознала запись кусками — берём её.
+                // Не вышло (ошибка куска, пусто) — распознаём целиком, как раньше.
+                if let live = await liveTranscript?(), !live.isEmpty,
+                   await self?.completeTranscription(id: recordingID, text: live) == true {
+                    return
+                }
                 await self?.runTranscription(id: recordingID, audioURL: audioURL)
             }
         }
         return rec
+    }
+
+    /// Сохранить готовый текст расшифровки (из живой расшифровки) так же,
+    /// как результат обычной: файл в папке расшифровок, статус, авто-название.
+    private func completeTranscription(id: UUID, text: String) async -> Bool {
+        do {
+            let txtURL = try AppSettings.transcriptsDirectory()
+                .appendingPathComponent(UUID().uuidString + ".txt")
+            try text.write(to: txtURL, atomically: true, encoding: .utf8)
+            let transcriptBookmark = FileBookmark.create(from: txtURL)
+            update(id: id) {
+                $0.transcriptFileName = txtURL.lastPathComponent
+                $0.transcriptBookmark = transcriptBookmark
+                $0.status = .done
+            }
+            await applyAutoTitle(id: id, transcriptURL: txtURL)
+            return true
+        } catch {
+            print("⚠️ live transcript save failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     /// Может ли запись быть перетранскрибирована (аудио ещё на диске).
