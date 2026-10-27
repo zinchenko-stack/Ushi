@@ -34,6 +34,46 @@ struct HeroStartView: View {
     private var targetProject: Project? { projects.project(id: targetProjectID) }
 
     var body: some View {
+        Group {
+            // Во время записи главное — текст разговора: наверху узкая полоса
+            // со стопом и временем, всё остальное место — расшифровке.
+            if controller.isRecording, let live = controller.liveTranscript {
+                recordingLayout(live)
+            } else {
+                heroLayout
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) { savedToast }
+        .animation(.spring(duration: 0.3), value: savedRecording)
+        // Без заголовка в окне: на экране и так крупное «Начать запись».
+        .modifier(HiddenWindowTitle())
+        // Загрузка готового аудио — кнопкой справа вверху, как в Claude Code.
+        .toolbar {
+            TrailingToolbarButton(
+                imageName: "Download",
+                title: "Загрузить",
+                help: "Аудио для расшифровки",
+                isEnabled: !isActive
+            ) {
+                importAudio()
+            }
+        }
+        .sheet(isPresented: $isCreatingProject) {
+            CreateProjectSheet(projects: projects) { project in
+                targetProjectID = project.id
+            }
+        }
+        // Запись могли остановить из sidebar или menu bar — тост показываем всё равно.
+        .onChange(of: controller.lastSavedRecording) { _, rec in
+            guard rec != nil, let saved = controller.consumeLastSavedRecording() else { return }
+            showSavedToast(saved)
+        }
+    }
+
+    // MARK: - Экран без записи (и отсчёт)
+
+    private var heroLayout: some View {
         VStack(spacing: 0) {
             // Что и куда записываем: заголовок и Проект — одним блоком над кнопкой.
             VStack(spacing: 20) {
@@ -116,43 +156,71 @@ struct HeroStartView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 }
-
-                // Живая расшифровка — занимает всё оставшееся место внизу.
-                if controller.isRecording, let live = controller.liveTranscript {
-                    LiveTranscriptPanel(live: live)
-                        .frame(maxWidth: 720, maxHeight: .infinity)
-                }
             }
             .padding(.top, 64)
             .frame(maxHeight: .infinity, alignment: .top)
         }
         // Кнопка записи чуть выше середины окна.
         .offset(y: -3)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .bottom) { savedToast }
-        .animation(.spring(duration: 0.3), value: savedRecording)
-        // Без заголовка в окне: на экране и так крупное «Начать запись».
-        .modifier(HiddenWindowTitle())
-        // Загрузка готового аудио — кнопкой справа вверху, как в Claude Code.
-        .toolbar {
-            TrailingToolbarButton(
-                imageName: "Download",
-                title: "Загрузить",
-                help: "Аудио для расшифровки",
-                isEnabled: !isActive
-            ) {
-                importAudio()
+    }
+
+    // MARK: - Экран во время записи
+
+    private func recordingLayout(_ live: LiveTranscript) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Button(action: handleTap) {
+                    ZStack {
+                        Circle().fill(AppColors.red).frame(width: 36, height: 36)
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white)
+                    }
+                    .opacity(controller.isBusy ? 0.5 : 1)
+                }
+                .buttonStyle(.plain)
+                .disabled(controller.isBusy)
+                .help("Остановить запись")
+                .accessibilityLabel("Остановить запись")
+
+                Text(formatTime(recorder.elapsed))
+                    .font(.system(size: 22, weight: .medium, design: .rounded).monospacedDigit())
+                    .contentTransition(.numericText())
+
+                projectChip
+
+                Spacer(minLength: 12)
+
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(.quaternary)
+                    .frame(width: 120, height: 6)
+                    .overlay(alignment: .leading) {
+                        GeometryReader { geo in
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(levelColor)
+                                .frame(width: geo.size.width * CGFloat(recorder.level))
+                                .animation(.easeOut(duration: 0.1), value: recorder.level)
+                        }
+                    }
+                    .accessibilityHidden(true)
             }
-        }
-        .sheet(isPresented: $isCreatingProject) {
-            CreateProjectSheet(projects: projects) { project in
-                targetProjectID = project.id
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+
+            if let errorMessage = controller.errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(controller.errorIsPermissionHint ? Color.secondary : AppColors.red)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        // Запись могли остановить из sidebar или menu bar — тост показываем всё равно.
-        .onChange(of: controller.lastSavedRecording) { _, rec in
-            guard rec != nil, let saved = controller.consumeLastSavedRecording() else { return }
-            showSavedToast(saved)
+
+            Divider()
+
+            LiveTranscriptPanel(live: live)
+                .frame(maxWidth: 820, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
         }
     }
 
