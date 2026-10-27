@@ -262,7 +262,8 @@ struct HeroStartView: View {
     /// и стрелка; по клику — список Проектов.
     private var projectChip: some View {
         let shown = isActive ? controller.activeProject : targetProject
-        return ClaudeButton(isEnabled: !isActive, action: { projectMenu.popUp(projectMenuItems) }) {
+        return ClaudeButton(isEnabled: !isActive, height: 32, cornerRadius: 10,
+                            action: { projectMenu.popUp(projectMenuItems) }) {
             HStack(spacing: 6) {
                 Image("FolderClosed")
                     .resizable()
@@ -507,10 +508,11 @@ private struct RecordingProjectBadge: View {
                 .font(.system(size: 13))
                 .lineLimit(1)
         }
-        .padding(8)
+        // Те же размеры, что у выбора проекта на стартовом экране, но без стрелки.
+        .padding(.horizontal, 8)
         .frame(height: 32)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15)))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.35)))
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.secondary.opacity(0.15)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.secondary.opacity(0.35)))
         .opacity(0.45)
         .fixedSize()
         .accessibilityLabel("Проект: \(name)")

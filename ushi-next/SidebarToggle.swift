@@ -123,6 +123,9 @@ struct ClaudeButton<Label: View>: View {
     var isEnabled = true
     /// Поля по бокам: у одной иконки — 0 (кнопка и так квадрат 28×28).
     var horizontalPadding: CGFloat = 8
+    /// Высота и скругление: у кнопок тулбара 28 и 7, у плашки проекта крупнее.
+    var height: CGFloat = 28
+    var cornerRadius: CGFloat = 7
     let action: () -> Void
     @ViewBuilder let label: () -> Label
 
@@ -133,9 +136,9 @@ struct ClaudeButton<Label: View>: View {
             label()
                 .foregroundStyle(isHighlighted ? AppColors.toolbarGlyphHover : AppColors.toolbarGlyph)
                 .padding(.horizontal, horizontalPadding)
-                .frame(minWidth: 28, minHeight: 28)
+                .frame(minWidth: 28, minHeight: height)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(Color.primary.opacity(isHighlighted ? 0.07 : 0))
                 )
                 .contentShape(Rectangle())
