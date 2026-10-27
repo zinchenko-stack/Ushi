@@ -11,6 +11,8 @@ import SwiftUI
 
 struct LiveTranscriptPanel: View {
     let live: LiveTranscript
+    /// Ширина колонки текста — та же, что у полосы записи над ним.
+    var contentWidth: CGFloat = 920
     @Environment(\.controlActiveState) private var activeState
     /// Индекс первой непрочитанной реплики на момент возвращения. nil — черты нет.
     @State private var dividerAt: Int?
@@ -34,9 +36,9 @@ struct LiveTranscriptPanel: View {
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: contentWidth, alignment: .leading)
+                .padding(24)
+                .frame(maxWidth: .infinity)
             }
             .onAppear {
                 isOnScreen = true
@@ -77,11 +79,11 @@ struct LiveTranscriptPanel: View {
 
     private var newDivider: some View {
         HStack(spacing: 8) {
-            Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
+            Rectangle().fill(AppColors.divider).frame(height: 1)
             Text("Новое")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-            Rectangle().fill(Color.accentColor.opacity(0.6)).frame(height: 1)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Rectangle().fill(AppColors.divider).frame(height: 1)
         }
     }
 
@@ -93,9 +95,11 @@ struct LiveTranscriptPanel: View {
                 }
                 Text(live.startDate.addingTimeInterval(turn.start), format: .dateTime.hour().minute())
             }
-            .font(.callout)
+            .font(.system(size: 13))
             .foregroundStyle(.secondary)
             Text(turn.text)
+                .font(.system(size: 15))
+                .lineSpacing(4)          // 15/22, как в макете
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }

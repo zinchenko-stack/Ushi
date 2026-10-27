@@ -166,73 +166,77 @@ struct HeroStartView: View {
 
     // MARK: - Экран во время записи
 
+    /// Ширина контента на экране записи: полоса и текст выровнены по одной колонке.
+    static let recordingContentWidth: CGFloat = 920
+
     private func recordingLayout(_ live: LiveTranscript) -> some View {
         VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: 20) {
-                // Слева: стоп и время, под ними — куда идёт запись.
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 14) {
-                        Button(action: handleTap) {
-                            ZStack {
-                                Circle().fill(AppColors.red).frame(width: 36, height: 36)
-                                Image(systemName: "stop.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(.white)
-                            }
-                            .opacity(controller.isBusy ? 0.5 : 1)
+            HStack(alignment: .center, spacing: 16) {
+                // Слева: стоп, время и уровень звука под ним.
+                HStack(spacing: 16) {
+                    Button(action: handleTap) {
+                        ZStack {
+                            Circle().fill(AppColors.red).frame(width: 48, height: 48)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(.white)
+                                .frame(width: 16, height: 16)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(controller.isBusy)
-                        .help("Остановить запись")
-                        .accessibilityLabel("Остановить запись")
-
-                        Text(formatTime(recorder.elapsed))
-                            .font(.system(size: 22, weight: .medium, design: .rounded).monospacedDigit())
-                            .contentTransition(.numericText())
+                        .opacity(controller.isBusy ? 0.5 : 1)
                     }
-                    projectChip
+                    .buttonStyle(.plain)
+                    .disabled(controller.isBusy)
+                    .help("Остановить запись")
+                    .accessibilityLabel("Остановить запись")
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(formatTime(recorder.elapsed))
+                            .font(.system(size: 28, weight: .semibold).monospacedDigit())
+                            .contentTransition(.numericText())
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(.quaternary)
+                            .frame(width: 160, height: 6)
+                            .overlay(alignment: .leading) {
+                                GeometryReader { geo in
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(levelColor)
+                                        .frame(width: geo.size.width * CGFloat(recorder.level))
+                                        .animation(.easeOut(duration: 0.1), value: recorder.level)
+                                }
+                            }
+                            .accessibilityHidden(true)
+                    }
                 }
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 16)
 
-                // Справа: что пишется — чтобы сразу заметить, если что-то забыли включить.
-                VStack(alignment: .trailing, spacing: 10) {
+                // Справа: что пишется и куда — только для взгляда, не кнопки.
+                HStack(spacing: 16) {
                     HStack(spacing: 8) {
                         ForEach(RecordingPreset.Source.available, id: \.self) { source in
                             ActiveSourceBadge(source: source, isOn: presetBinding.wrappedValue.contains(source))
                         }
                     }
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(.quaternary)
-                        .frame(width: 160, height: 6)
-                        .overlay(alignment: .leading) {
-                            GeometryReader { geo in
-                                RoundedRectangle(cornerRadius: 3)
-                                    .fill(levelColor)
-                                    .frame(width: geo.size.width * CGFloat(recorder.level))
-                                    .animation(.easeOut(duration: 0.1), value: recorder.level)
-                            }
-                        }
-                        .accessibilityHidden(true)
+                    RecordingProjectBadge(name: controller.activeProject?.name ?? "Без проекта")
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
+            .frame(maxWidth: Self.recordingContentWidth)
+            .padding(24)
+            .frame(maxWidth: .infinity)
 
             if let errorMessage = controller.errorMessage {
                 Text(errorMessage)
                     .font(.callout)
                     .foregroundStyle(controller.errorIsPermissionHint ? Color.secondary : AppColors.red)
+                    .frame(maxWidth: Self.recordingContentWidth, alignment: .leading)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity)
             }
 
             Divider()
 
-            LiveTranscriptPanel(live: live)
-                .frame(maxWidth: 820, maxHeight: .infinity)
-                .frame(maxWidth: .infinity)
+            LiveTranscriptPanel(live: live, contentWidth: Self.recordingContentWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -470,29 +474,48 @@ struct HeroStartView: View {
 
 /// Круглая кнопка-переключатель источника с подписью снизу, как в Telegram:
 /// включена — залита акцентом, выключена — серая.
-/// Источник на полосе записи: включён — подсвечен, выключен — приглушён и
-/// подписан «выкл.», чтобы это было видно с первого взгляда.
+/// Источник на полосе записи — кружок со значком, не кнопка. Включён —
+/// приглушённый голубой, выключен — серый в рамке.
 private struct ActiveSourceBadge: View {
     let source: RecordingPreset.Source
     let isOn: Bool
 
     var body: some View {
+        Image(systemName: source.outlineImage)
+            .font(.system(size: 13, weight: .regular))
+            .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
+            .frame(width: 32, height: 32)
+            .background(Circle().fill(isOn ? AppColors.accentFill.opacity(0.7) : Color.secondary.opacity(0.15)))
+            .overlay(Circle().strokeBorder(isOn ? Color.clear : Color.secondary.opacity(0.35)))
+            .opacity(isOn ? 1 : 0.8)
+            .help(isOn ? "\(source.title): пишется" : "\(source.title): не пишется")
+            .accessibilityLabel(source.title)
+            .accessibilityValue(isOn ? "пишется" : "не пишется")
+    }
+}
+
+/// Проект, в который идёт запись, — серая плашка, во время записи не меняется.
+private struct RecordingProjectBadge: View {
+    let name: String
+
+    var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: isOn ? source.systemImage : source.systemImage.replacingOccurrences(of: ".fill", with: ""))
-                .font(.system(size: 12, weight: .medium))
-            Text(isOn ? source.shortTitle : "\(source.shortTitle): выкл.")
-                .font(.system(size: 12, weight: isOn ? .medium : .regular))
+            Image("FolderClosed")
+                .resizable()
+                .renderingMode(.template)
+                .scaledToFit()
+                .frame(width: 16, height: 16)
+            Text(name)
+                .font(.system(size: 13))
                 .lineLimit(1)
-                .fixedSize()
         }
-        .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(isOn ? AppColors.accentFill : Color.clear))
-        .overlay(Capsule().strokeBorder(isOn ? Color.clear : Color.secondary.opacity(0.35)))
-        .opacity(isOn ? 1 : 0.8)
-        .accessibilityLabel(source.title)
-        .accessibilityValue(isOn ? "пишется" : "не пишется")
+        .padding(8)
+        .frame(height: 32)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.15)))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary.opacity(0.35)))
+        .opacity(0.45)
+        .fixedSize()
+        .accessibilityLabel("Проект: \(name)")
     }
 }
 

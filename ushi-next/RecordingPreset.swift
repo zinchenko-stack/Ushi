@@ -104,6 +104,15 @@ struct RecordingPreset: Hashable, Codable, RawRepresentable {
             }
         }
 
+        /// Контурный значок — для плашек на полосе записи.
+        var outlineImage: String {
+            switch self {
+            case .systemAudio: return "speaker.wave.2"
+            case .microphone:  return "mic"
+            case .screen:      return "display"
+            }
+        }
+
         var systemImage: String {
             switch self {
             case .systemAudio: return "speaker.wave.2.fill"
