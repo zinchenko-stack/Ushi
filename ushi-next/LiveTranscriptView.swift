@@ -98,8 +98,8 @@ struct LiveTranscriptPanel: View {
             .font(.system(size: 13))
             .foregroundStyle(.secondary)
             Text(turn.text)
-                .font(.system(size: 15))
-                .lineSpacing(4)          // 15/22, как в макете
+                .font(.system(size: 14))
+                .lineSpacing(3)          // 14/20
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         }
