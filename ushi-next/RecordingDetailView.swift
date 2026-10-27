@@ -243,15 +243,40 @@ struct RecordingDetailView: View {
                 case .failed:
                     statusBlock("Не удалось расшифровать запись", isError: true, recording: rec)
                 case .done:
-                    if let text = transcriptText, !text.isEmpty {
+                    if let text = transcriptText,
+                       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         TranscriptDialogView(text: text)
+                    } else if transcriptText != nil {
+                        // Расшифровка прошла, но слов нет — объясняем почему, а не «недоступна».
+                        noSpeechBlock(for: rec)
                     } else {
-                        Text("Расшифровка недоступна").foregroundStyle(.secondary)
+                        Text("Файл расшифровки не найден. Нажмите «Расшифровать заново».")
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Пустая расшифровка: в записи не нашлось речи. Подсказываем вероятную причину
+    /// по тому, какие источники были включены.
+    private func noSpeechBlock(for rec: Recording) -> some View {
+        let reason: String
+        if !rec.hasMicrophone && rec.hasSystemAudio {
+            reason = "Микрофон был выключен, поэтому ваш голос не записывался. Звука компьютера — голоса собеседника — за это время не было."
+        } else if rec.hasMicrophone && !rec.hasSystemAudio {
+            reason = "Звук компьютера был выключен, поэтому голос собеседника не записывался. В микрофон за это время никто не говорил."
+        } else {
+            reason = "Похоже, за это время никто не говорил: ни в микрофон, ни в созвоне. Можно прослушать запись выше, чтобы проверить."
+        }
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("В записи не нашлось речи")
+                .font(.headline)
+            Text(reason)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
