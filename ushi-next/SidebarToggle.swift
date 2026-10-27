@@ -118,6 +118,16 @@ struct HiddenWindowTitle: ViewModifier {
 
 /// Кнопка без фона: иконка и подпись цвета Claude Code, при наведении — ярче
 /// и с лёгкой подложкой. Подсказка (если есть) — плашкой под кнопкой.
+extension View {
+    /// Тень карточек из макета: мягкая широкая (y 4, blur 40, spread 8, 3%)
+    /// и плотная близкая (y 2, blur 8, 5%). Радиус SwiftUI ≈ половина blur Figma.
+    func cardShadow() -> some View {
+        self
+            .shadow(color: .black.opacity(0.032), radius: 24, y: 4)
+            .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+    }
+}
+
 struct ClaudeButton<Label: View>: View {
     var help: String? = nil
     var isEnabled = true
@@ -126,6 +136,8 @@ struct ClaudeButton<Label: View>: View {
     /// Высота и скругление: у кнопок тулбара 28 и 7, у плашки проекта крупнее.
     var height: CGFloat = 28
     var cornerRadius: CGFloat = 7
+    /// Белая карточка с тенью — для заметных кнопок («Загрузить», выбор проекта).
+    var isCard = false
     let action: () -> Void
     @ViewBuilder let label: () -> Label
 
@@ -137,10 +149,16 @@ struct ClaudeButton<Label: View>: View {
                 .foregroundStyle(isHighlighted ? AppColors.toolbarGlyphHover : AppColors.toolbarGlyph)
                 .padding(.horizontal, horizontalPadding)
                 .frame(minWidth: 28, minHeight: height)
-                .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.primary.opacity(isHighlighted ? 0.07 : 0))
-                )
+                .background {
+                    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    if isCard {
+                        shape.fill(AppColors.elevated)
+                            .overlay(shape.fill(Color.primary.opacity(isHighlighted ? 0.04 : 0)))
+                            .cardShadow()
+                    } else {
+                        shape.fill(Color.primary.opacity(isHighlighted ? 0.07 : 0))
+                    }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -162,10 +180,14 @@ struct ToolbarIconButton: View {
     let action: () -> Void
 
     var body: some View {
+        // С подписью («Загрузить») — белая карточка 32, как выбор проекта.
         ClaudeButton(
             help: help,
             isEnabled: isEnabled,
             horizontalPadding: title == nil ? 0 : 8,
+            height: title == nil ? 28 : 32,
+            cornerRadius: title == nil ? 7 : 10,
+            isCard: title != nil,
             action: action
         ) {
             HStack(spacing: 6) {

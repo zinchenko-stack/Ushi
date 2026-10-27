@@ -262,7 +262,7 @@ struct HeroStartView: View {
     /// и стрелка; по клику — список Проектов.
     private var projectChip: some View {
         let shown = isActive ? controller.activeProject : targetProject
-        return ClaudeButton(isEnabled: !isActive, height: 32, cornerRadius: 10,
+        return ClaudeButton(isEnabled: !isActive, height: 32, cornerRadius: 10, isCard: true,
                             action: { projectMenu.popUp(projectMenuItems) }) {
             HStack(spacing: 6) {
                 Image("FolderClosed")
@@ -409,9 +409,9 @@ struct HeroStartView: View {
             }
             .font(.callout)
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .frame(height: 40)
             .background(AppColors.elevated, in: Capsule())
-            .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+            .cardShadow()
             .padding(.bottom, 28)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         } else if let rec = savedRecording {
@@ -430,9 +430,9 @@ struct HeroStartView: View {
                 }
                 .font(.callout)
                 .padding(.horizontal, 14)
-                .padding(.vertical, 12)
+                .frame(height: 40)
                 .background(AppColors.elevated, in: Capsule())
-                .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+                .cardShadow()
             }
             .buttonStyle(.plain)
             .padding(.bottom, 28)
@@ -529,7 +529,14 @@ private struct SourceToggleButton: View {
                     .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
                     .frame(width: 44, height: 44)
-                    .background(Circle().fill(isOn ? AppColors.accentFill : Color.secondary.opacity(0.18)))
+                    // Выключенный источник — белая карточка с тенью: видно, что его можно включить.
+                    .background {
+                        if isOn {
+                            Circle().fill(AppColors.accentFill)
+                        } else {
+                            Circle().fill(AppColors.elevated).cardShadow()
+                        }
+                    }
                 Text(source.shortTitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
