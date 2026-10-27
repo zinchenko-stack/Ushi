@@ -180,14 +180,13 @@ struct ToolbarIconButton: View {
     let action: () -> Void
 
     var body: some View {
-        // С подписью («Загрузить») — белая карточка 32, как выбор проекта.
+        // С подписью («Загрузить») — 32 и скругление 10, как выбор проекта.
         ClaudeButton(
             help: help,
             isEnabled: isEnabled,
             horizontalPadding: title == nil ? 0 : 8,
             height: title == nil ? 28 : 32,
             cornerRadius: title == nil ? 7 : 10,
-            isCard: title != nil,
             action: action
         ) {
             HStack(spacing: 6) {

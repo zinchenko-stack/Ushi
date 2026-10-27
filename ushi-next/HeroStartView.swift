@@ -262,7 +262,7 @@ struct HeroStartView: View {
     /// и стрелка; по клику — список Проектов.
     private var projectChip: some View {
         let shown = isActive ? controller.activeProject : targetProject
-        return ClaudeButton(isEnabled: !isActive, height: 32, cornerRadius: 10, isCard: true,
+        return ClaudeButton(isEnabled: !isActive, height: 32, cornerRadius: 10,
                             action: { projectMenu.popUp(projectMenuItems) }) {
             HStack(spacing: 6) {
                 Image("FolderClosed")
