@@ -166,7 +166,8 @@ struct HeroStartView: View {
 
     // MARK: - Экран во время записи
 
-    /// Ширина контента на экране записи: полоса и текст выровнены по одной колонке.
+    /// Текст расшифровки не шире этого — длинные строки трудно читать.
+    /// Полоса записи при этом во всю ширину окна.
     static let recordingContentWidth: CGFloat = 920
 
     private func recordingLayout(_ live: LiveTranscript) -> some View {
@@ -219,18 +220,15 @@ struct HeroStartView: View {
                     RecordingProjectBadge(name: controller.activeProject?.name ?? "Без проекта")
                 }
             }
-            .frame(maxWidth: Self.recordingContentWidth)
             .padding(24)
-            .frame(maxWidth: .infinity)
 
             if let errorMessage = controller.errorMessage {
                 Text(errorMessage)
                     .font(.callout)
                     .foregroundStyle(controller.errorIsPermissionHint ? Color.secondary : AppColors.red)
-                    .frame(maxWidth: Self.recordingContentWidth, alignment: .leading)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Divider()

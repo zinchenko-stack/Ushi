@@ -11,7 +11,7 @@ import SwiftUI
 
 struct LiveTranscriptPanel: View {
     let live: LiveTranscript
-    /// Ширина колонки текста — та же, что у полосы записи над ним.
+    /// Максимальная ширина текста. Колонка прижата влево — под кнопку стопа.
     var contentWidth: CGFloat = 920
     @Environment(\.controlActiveState) private var activeState
     /// Индекс первой непрочитанной реплики на момент возвращения. nil — черты нет.
@@ -38,7 +38,7 @@ struct LiveTranscriptPanel: View {
                 }
                 .frame(maxWidth: contentWidth, alignment: .leading)
                 .padding(24)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .onAppear {
                 isOnScreen = true
