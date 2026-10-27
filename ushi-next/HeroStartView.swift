@@ -480,8 +480,9 @@ private struct ActiveSourceBadge: View {
     let isOn: Bool
 
     var body: some View {
-        Image(systemName: source.outlineImage)
-            .font(.system(size: 13, weight: .regular))
+        // Залитые значки, как у кнопок источников на стартовом экране.
+        Image(systemName: source.systemImage)
+            .font(.system(size: 14, weight: .medium))
             .foregroundStyle(isOn ? AppColors.accentGlyph : Color.secondary)
             .frame(width: 32, height: 32)
             .background(Circle().fill(isOn ? AppColors.accentFill.opacity(0.7) : Color.secondary.opacity(0.15)))
