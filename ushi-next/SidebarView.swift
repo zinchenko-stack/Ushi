@@ -625,6 +625,8 @@ enum AppColors {
     static let content = adaptive(dark: 0.094, light: 0.985)   // #181818 / #FBFBFB
     /// Разделители — тонкие линии в один пиксель (см. HairlineDivider).
     static let divider = pair(dark: 0x292929, light: 0xDEDEDE)
+    /// Всплывающие плашки поверх окна: в светлой теме чисто белые, в тёмной — чуть светлее окна.
+    static let elevated = pair(dark: 0x262626, light: 0xFFFFFF)
 
     /// Акцент на кнопках (запись, включённые источники): приглушённая подложка
     /// и значок в тон, а не яркий системный синий. В тёмной теме — как у

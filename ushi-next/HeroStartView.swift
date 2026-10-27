@@ -410,7 +410,7 @@ struct HeroStartView: View {
             .font(.callout)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(AppColors.content, in: Capsule())
+            .background(AppColors.elevated, in: Capsule())
             .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
             .padding(.bottom, 28)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -431,7 +431,7 @@ struct HeroStartView: View {
                 .font(.callout)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
-                .background(AppColors.content, in: Capsule())
+                .background(AppColors.elevated, in: Capsule())
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
             }
             .buttonStyle(.plain)
